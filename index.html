@@ -3,121 +3,393 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เกมคิดเลขเร็ว</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า - วังน้ำเย็นวิทยาคม</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
-        body { 
-            font-family: 'Sarabun', sans-serif; 
-            text-align: center; 
-            background-color: #f0f8ff; 
-            padding: 50px; 
-            margin: 0;
+        body { font-family: 'Sarabun', sans-serif; background-color: #f0f2f5; overflow-x: hidden; }
+        
+        /* Layout หน้าสแกน 70/30 */
+        .scan-container { display: flex; height: 100vh; width: 100vw; background: #111; }
+        .camera-section { width: 70%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .list-section { width: 30%; background: #ffffff; display: flex; flex-direction: column; border-left: 4px solid #4f46e5; }
+        
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas.overlay { position: absolute; top: 0; left: 0; transform: scaleX(-1); width: 100%; height: 100%; }
+
+        /* อนิเมชันรายชื่อเลื่อนขึ้น (CSS Animation) */
+        .scrolling-wrapper { flex-grow: 1; overflow: hidden; position: relative; background: #f8fafc; padding: 1rem; }
+        .scrolling-content { 
+            display: flex; flex-direction: column; gap: 12px; position: absolute; 
+            bottom: 0; width: calc(100% - 2rem); 
         }
-        .container { 
-            background: white; 
-            padding: 40px 30px; 
-            border-radius: 15px; 
-            box-shadow: 0 8px 16px rgba(0,0,0,0.1); 
-            max-width: 400px; 
-            margin: auto; 
-        }
-        h1 { color: #2c3e50; margin-bottom: 5px; }
-        p { color: #7f8c8d; margin-top: 0; margin-bottom: 20px; }
-        .problem { 
-            font-size: 48px; 
-            margin: 20px 0; 
-            font-weight: bold; 
-            color: #e74c3c; 
-        }
-        input { 
-            font-size: 24px; 
-            padding: 10px; 
-            width: 120px; 
-            text-align: center; 
-            border: 2px solid #bdc3c7; 
-            border-radius: 8px; 
-        }
-        button { 
-            color: white; 
-            border: none; 
-            padding: 12px 20px; 
-            font-size: 16px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            margin-top: 15px; 
-            transition: 0.3s;
-        }
-        .btn-check { background-color: #3498db; }
-        .btn-check:hover { background-color: #2980b9; }
-        .btn-next { background-color: #2ecc71; }
-        .btn-next:hover { background-color: #27ae60; }
-        #result { 
-            font-size: 22px; 
-            margin-top: 25px; 
-            font-weight: bold; 
-            min-height: 30px;
+        
+        /* อนิเมชันเมื่อมีชื่อใหม่เด้งเข้ามา */
+        .slide-up-enter-active, .slide-up-leave-active { transition: all 0.5s ease; }
+        .slide-up-enter-from { opacity: 0; transform: translateY(30px); }
+        .slide-up-leave-to { opacity: 0; transform: translateY(-30px); }
+
+        .name-card { 
+            background: white; padding: 15px 20px; border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-left: 6px solid #22c55e; 
+            display: flex; justify-content: space-between; align-items: center;
         }
     </style>
 </head>
 <body>
+    <div id="app">
+        <div v-if="currentTab === 'menu'" class="min-h-screen flex items-center justify-center p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl w-full">
+                <div @click="openScan" class="p-8 bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-3xl shadow-xl hover:shadow-2xl cursor-pointer transform hover:-translate-y-1 transition duration-300">
+                    <i class="fa-solid fa-expand text-5xl mb-4 opacity-80"></i>
+                    <h2 class="text-3xl font-bold">จุดสแกนใบหน้า</h2>
+                    <p class="mt-2 text-indigo-100">แสกนแบบกลุ่ม 70/30</p>
+                </div>
+                <div @click="currentTab = 'admin'" class="p-8 bg-gradient-to-br from-slate-700 to-gray-900 text-white rounded-3xl shadow-xl hover:shadow-2xl cursor-pointer transform hover:-translate-y-1 transition duration-300">
+                    <i class="fa-solid fa-users-gear text-5xl mb-4 opacity-80"></i>
+                    <h2 class="text-3xl font-bold">แอดมิน (Admin)</h2>
+                    <p class="mt-2 text-gray-300">จัดการข้อมูล & อัปโหลดรูป</p>
+                </div>
+                <div @click="currentTab = 'parent'" class="p-8 bg-gradient-to-br from-orange-400 to-rose-500 text-white rounded-3xl shadow-xl hover:shadow-2xl cursor-pointer transform hover:-translate-y-1 transition duration-300">
+                    <i class="fa-solid fa-mobile-screen text-5xl mb-4 opacity-80"></i>
+                    <h2 class="text-3xl font-bold">ระบบผู้ปกครอง</h2>
+                    <p class="mt-2 text-rose-100">ตั้งค่า Telegram และข้อมูล</p>
+                </div>
+            </div>
+        </div>
 
-<div class="container">
-    <h1>ฝึกคิดเลขเร็ว</h1>
-    <p>โรงเรียนวังน้ำเย็นวิทยาคม</p>
-    
-    <div class="problem" id="question">? + ?</div>
-    <input type="number" id="answer" placeholder="คำตอบ" onkeypress="handleEnter(event)">
-    <br>
-    <button class="btn-check" onclick="checkAnswer()">ตรวจคำตอบ</button>
-    <button class="btn-next" onclick="generateProblem()">สุ่มโจทย์ใหม่</button>
-    
-    <div id="result"></div>
-</div>
+        <div v-if="currentTab === 'scan'" class="scan-container">
+            <div class="camera-section">
+                <video id="videoInput" autoplay muted playsinline></video>
+                <canvas id="overlay" class="overlay"></canvas>
+                <button @click="closeScan" class="absolute top-6 left-6 z-50 bg-red-500/80 hover:bg-red-600 text-white px-5 py-2.5 rounded-xl backdrop-blur-md shadow-lg font-bold flex items-center gap-2 transition">
+                    <i class="fa-solid fa-arrow-left"></i> ปิดกล้อง
+                </button>
+                <div v-if="isLoadingAI" class="absolute inset-0 bg-gray-900/80 flex flex-col items-center justify-center z-40 text-white">
+                    <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 mb-4"></div>
+                    <h2 class="text-xl font-bold animate-pulse">กำลังโหลด AI และฐานข้อมูล...</h2>
+                </div>
+            </div>
+            
+            <div class="list-section">
+                <div class="bg-indigo-600 text-white p-6 shadow-md z-10">
+                    <h2 class="text-2xl font-bold"><i class="fa-solid fa-clipboard-user mr-2"></i>นักเรียนที่มาถึง</h2>
+                    <p class="text-indigo-200 text-sm mt-1 flex justify-between">
+                        <span>ประจำวันที่ {{ currentDate }}</span>
+                        <span class="font-bold bg-white/20 px-2 py-0.5 rounded">{{ todayCount }} คน</span>
+                    </p>
+                </div>
+                <div class="scrolling-wrapper">
+                    <transition-group name="slide-up" tag="div" class="scrolling-content">
+                        <div v-for="student in recentScans" :key="student.logId" class="name-card">
+                            <div class="flex items-center gap-4">
+                                <img v-if="student.image" :src="student.image" class="w-12 h-12 rounded-full object-cover border-2 border-green-500">
+                                <div v-else class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-500"><i class="fa-solid fa-user"></i></div>
+                                <div>
+                                    <p class="font-bold text-gray-800 text-lg leading-tight">{{ student.name }}</p>
+                                    <p class="text-sm text-gray-500 font-medium">ม.{{ student.classLevel }} | เลขที่ {{ student.number }}</p>
+                                </div>
+                            </div>
+                            <div class="text-green-700 font-bold text-lg bg-green-100 px-3 py-1 rounded-lg border border-green-200">
+                                {{ student.time }}
+                            </div>
+                        </div>
+                    </transition-group>
+                </div>
+            </div>
+        </div>
 
-<script>
-    let num1, num2, correctAnswer;
+        <div v-if="currentTab === 'admin'" class="min-h-screen bg-gray-50 p-8">
+            <button @click="currentTab = 'menu'" class="mb-6 bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 px-4 py-2 rounded-lg font-bold shadow-sm flex items-center gap-2"><i class="fa-solid fa-arrow-left"></i> กลับเมนูหลัก</button>
+            
+            <div class="bg-white p-8 rounded-3xl shadow-xl max-w-5xl mx-auto border border-gray-100">
+                <h2 class="text-2xl font-bold mb-6 text-gray-800"><i class="fa-solid fa-database text-indigo-600 mr-2"></i> จัดการข้อมูล (Firebase + Drive)</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="border-2 border-dashed border-indigo-200 bg-indigo-50/30 p-8 text-center rounded-2xl">
+                        <i class="fa-solid fa-file-excel text-5xl text-green-600 mb-4"></i>
+                        <h3 class="font-bold text-lg text-gray-700 mb-2">นำเข้าข้อมูลจาก Excel</h3>
+                        <p class="text-sm text-gray-500 mb-4">อัปโหลดรายชื่อเข้า Firebase ทีละหลายคน</p>
+                        <input type="file" @change="handleExcelUpload" accept=".xlsx, .xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer transition">
+                    </div>
 
-    // ฟังก์ชันสุ่มโจทย์ใหม่
-    function generateProblem() {
-        num1 = Math.floor(Math.random() * 50) + 1; // สุ่มเลข 1-50
-        num2 = Math.floor(Math.random() * 50) + 1;
-        correctAnswer = num1 + num2;
-        
-        document.getElementById("question").innerText = num1 + " + " + num2;
-        document.getElementById("answer").value = "";
-        document.getElementById("result").innerText = "";
-        document.getElementById("answer").focus(); // ให้เคอร์เซอร์ไปกระพริบที่ช่องพิมพ์
-    }
+                    <div class="bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                        <h3 class="font-bold text-lg text-gray-700 mb-4">ทดสอบเพิ่มคน + รูปภาพ</h3>
+                        <input v-model="newStudent.id" placeholder="รหัส 5 หลัก (เช่น 22102)" class="w-full mb-3 p-3 border rounded-xl outline-none focus:border-indigo-500">
+                        <input v-model="newStudent.name" placeholder="ชื่อ-นามสกุล" class="w-full mb-3 p-3 border rounded-xl outline-none focus:border-indigo-500">
+                        <input type="file" @change="handleImageSelect" accept="image/*" class="mb-4 text-sm">
+                        
+                        <button @click="saveStudentToFirebaseAndDrive" :disabled="isSaving" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 disabled:bg-gray-400 transition">
+                            <span v-if="!isSaving"><i class="fa-solid fa-cloud-arrow-up mr-2"></i> บันทึกเข้าระบบ</span>
+                            <span v-else><i class="fa-solid fa-spinner animate-spin mr-2"></i> กำลังอัปโหลดรูปลง Drive...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    // ฟังก์ชันตรวจคำตอบ
-    function checkAnswer() {
-        let userAnswer = parseInt(document.getElementById("answer").value);
-        let resultDiv = document.getElementById("result");
-        
-        if (isNaN(userAnswer)) {
-            resultDiv.innerText = "⚠️ กรุณาพิมพ์ตัวเลขครับ";
-            resultDiv.style.color = "#f39c12";
-            return;
-        }
+    <script>
+        // 1. ใส่ Config Firebase ของคุณ (รหัสผ่านฐานข้อมูล)
+        const firebaseConfig = {
+          apiKey: "AIzaSyCcbcchbHCjKwCw0xnNkqE42d7ZvK0g3Fk",
+          authDomain: "scan-708a9.firebaseapp.com",
+          projectId: "scan-708a9",
+          storageBucket: "scan-708a9.firebasestorage.app",
+          messagingSenderId: "461577898006",
+          appId: "1:461577898006:web:b4019e156c4eacbe1bcd37",
+          measurementId: "G-7M1YP89VKY"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-        if (userAnswer === correctAnswer) {
-            resultDiv.innerText = "✅ ถูกต้อง! เก่งมากครับ";
-            resultDiv.style.color = "#27ae60";
-        } else {
-            resultDiv.innerText = "❌ ยังไม่ถูก ลองคิดใหม่อีกนิดนะ";
-            resultDiv.style.color = "#c0392b";
-        }
-    }
+        // 2. ***** สำคัญ: วาง URL เว็บแอป (Apps Script) ของคุณตรงนี้ *****
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYOUR_SCRIPT_ID_HERE/exec"; 
 
-    // กด Enter เพื่อตรวจคำตอบได้เลย
-    function handleEnter(event) {
-        if (event.key === "Enter") {
-            checkAnswer();
-        }
-    }
+        // 3. Telegram Bot Token
+        const TELEGRAM_BOT_TOKEN = 'YOUR_BOT_TOKEN';
 
-    // เริ่มต้นสร้างโจทย์ข้อแรกเมื่อเปิดหน้าเว็บ
-    window.onload = generateProblem;
-</script>
+        const { createApp } = Vue;
+        createApp({
+            data() {
+                return {
+                    currentTab: 'menu',
+                    isLoadingAI: false,
+                    isSaving: false,
+                    videoStream: null,
+                    scanInterval: null,
+                    faceMatcher: null,
+                    studentList: [], // โหลดจาก Firebase
+                    recentScans: [], // เก็บรายการเช็คชื่อแสดงด้านขวา
+                    todayCount: 0,
+                    cooldowns: {}, // ป้องกันแสกนรัวๆ คนเดิม
+                    
+                    newStudent: { id: '', name: '', imageBase64: '' }
+                }
+            },
+            computed: {
+                currentDate() {
+                    return new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+                }
+            },
+            methods: {
+                async openScan() {
+                    this.currentTab = 'scan';
+                    this.isLoadingAI = true;
+                    try {
+                        // โหลดโมเดล AI
+                        const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                        await Promise.all([
+                            faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                        ]);
+                        // โหลดข้อมูลนักเรียนจาก Firebase Firestore
+                        await this.loadStudentsFromFirebase();
+                        this.isLoadingAI = false;
+                        this.startVideo();
+                    } catch(e) {
+                        Swal.fire('Error', 'ไม่สามารถโหลดระบบ AI ได้ โปรดตรวจสอบอินเทอร์เน็ต', 'error');
+                        this.isLoadingAI = false;
+                    }
+                },
+                closeScan() {
+                    if(this.videoStream) this.videoStream.getTracks().forEach(track => track.stop());
+                    if(this.scanInterval) clearInterval(this.scanInterval);
+                    this.currentTab = 'menu';
+                },
+                async loadStudentsFromFirebase() {
+                    try {
+                        const snapshot = await db.collection('students').get();
+                        let list = [];
+                        snapshot.forEach(doc => {
+                            let data = doc.data();
+                            if(data.descriptor) { // ต้องมีข้อมูลใบหน้าถึงจะเอามาสแกนได้
+                                list.push({ id: doc.id, ...data });
+                            }
+                        });
+                        this.studentList = list;
+                        
+                        // สร้างคลังใบหน้า AI
+                        if(list.length > 0) {
+                            const labeledDescriptors = list.map(s => {
+                                const desc = new Float32Array(JSON.parse(s.descriptor));
+                                return new faceapi.LabeledFaceDescriptors(s.id, [desc]);
+                            });
+                            this.faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.45); // ปรับความแม่นยำ
+                        }
+                    } catch (e) { console.error("Firebase Error: ", e); }
+                },
+                async startVideo() {
+                    const video = document.getElementById('videoInput');
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+                        this.videoStream = stream;
+                        video.srcObject = stream;
 
+                        video.addEventListener('play', () => {
+                            const canvas = document.getElementById('overlay');
+                            const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                            faceapi.matchDimensions(canvas, displaySize);
+
+                            // แสกนทุกๆ 300ms
+                            this.scanInterval = setInterval(async () => {
+                                if(this.currentTab !== 'scan') return;
+                                
+                                // สแกนหลายคนพร้อมกัน (detectAllFaces)
+                                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 })).withFaceLandmarks().withFaceDescriptors();
+                                const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                                
+                                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                                faceapi.draw.drawDetections(canvas, resizedDetections); // วาดกรอบสี่เหลี่ยม
+
+                                if (resizedDetections.length > 0 && this.faceMatcher) {
+                                    resizedDetections.forEach(detection => {
+                                        const bestMatch = this.faceMatcher.findBestMatch(detection.descriptor);
+                                        if (bestMatch.label !== 'unknown') {
+                                            this.recordAttendance(bestMatch.label);
+                                        }
+                                    });
+                                }
+                            }, 300); 
+                        });
+                    } catch(e) { console.error("Camera Error:", e); }
+                },
+                recordAttendance(studentId) {
+                    const now = Date.now();
+                    // ดีเลย์ 1 นาที (60000ms) ต่อคน ป้องกันสแกนซ้ำ
+                    if (this.cooldowns[studentId] && (now - this.cooldowns[studentId] < 60000)) return;
+                    this.cooldowns[studentId] = now;
+
+                    const studentInfo = this.studentList.find(s => s.id === studentId);
+                    if(!studentInfo) return;
+
+                    const timeStr = new Date().toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+                    
+                    // เพิ่มคิวแสดงฝั่งขวา
+                    this.recentScans.unshift({
+                        logId: Date.now(), // ใช้เป็น Key
+                        name: studentInfo.name,
+                        classLevel: studentInfo.classLevel,
+                        number: studentInfo.number,
+                        image: studentInfo.imageUrl,
+                        time: timeStr
+                    });
+                    this.todayCount++;
+
+                    // ตัดให้แสดงแค่ 10 คนล่าสุดในจอ
+                    if(this.recentScans.length > 10) this.recentScans.pop();
+
+                    // บันทึกลง Firebase Firestore (Collection: attendance)
+                    db.collection('attendance').add({
+                        studentId: studentInfo.id,
+                        name: studentInfo.name,
+                        date: new Date().toISOString().split('T')[0],
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        status: "มา" 
+                    });
+
+                    // แจ้งเตือน Telegram หากมี Chat ID
+                    if(studentInfo.telegramChatId) {
+                        this.sendTelegram(studentInfo.telegramChatId, `🔔 น้อง${studentInfo.name} แสกนใบหน้าเข้าโรงเรียนแล้ว เวลา ${timeStr}`);
+                    }
+                },
+                sendTelegram(chatId, text) {
+                    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}`;
+                    fetch(url).catch(e => console.error(e));
+                },
+
+                // --- ฟังก์ชันสำหรับฝั่ง Admin (รับรูป -> Drive -> Firebase) ---
+                handleImageSelect(event) {
+                    const file = event.target.files[0];
+                    if(!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => { this.newStudent.imageBase64 = e.target.result; };
+                    reader.readAsDataURL(file);
+                },
+                async saveStudentToFirebaseAndDrive() {
+                    if(!this.newStudent.id || !this.newStudent.name || !this.newStudent.imageBase64) {
+                        return Swal.fire('ข้อมูลไม่ครบ', 'กรุณากรอกรหัส ชื่อ และเลือกรูปภาพ', 'warning');
+                    }
+                    this.isSaving = true;
+
+                    try {
+                        // 1. ประมวลผลใบหน้าเพื่อเอาค่าตัวเลข (Descriptor) ด้วย face-api
+                        const imgElement = document.createElement('img');
+                        imgElement.src = this.newStudent.imageBase64;
+                        await new Promise(resolve => imgElement.onload = resolve);
+                        
+                        await Promise.all([
+                            faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+                            faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/'),
+                            faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/')
+                        ]);
+
+                        const detection = await faceapi.detectSingleFace(imgElement, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        if(!detection) throw new Error("ไม่พบใบหน้าในรูปภาพ กรุณาเลือกรูปที่เห็นหน้าชัดเจน");
+                        
+                        const descriptorString = JSON.stringify(Array.from(detection.descriptor));
+
+                        // 2. ส่งรูปภาพ Base64 ไปยัง Google Apps Script เพื่อบันทึกลง Drive
+                        const response = await fetch(APPS_SCRIPT_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // ป้องกัน CORS issue
+                            body: JSON.stringify({
+                                image: this.newStudent.imageBase64,
+                                filename: `${this.newStudent.id}_${this.newStudent.name}.jpg`
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if(!result.success) throw new Error(result.message);
+                        
+                        const driveImageUrl = result.url; // ได้ลิงก์ภาพจาก Drive แล้ว!
+
+                        // 3. บันทึกข้อมูลทั้งหมด (ชื่อ รหัส ลิงก์รูป ข้อมูลใบหน้า) ลง Firebase Firestore
+                        await db.collection('students').doc(this.newStudent.id).set({
+                            id: this.newStudent.id,
+                            name: this.newStudent.name,
+                            imageUrl: driveImageUrl, // เซฟเฉพาะลิงก์ ไม่เปลืองพื้นที่ Firebase
+                            descriptor: descriptorString,
+                            classLevel: "4/1", // ตัวอย่าง
+                            number: 1 // ตัวอย่าง
+                        });
+
+                        Swal.fire('สำเร็จ', 'บันทึกรูปภาพลง Drive และข้อมูลลง Firebase เรียบร้อย', 'success');
+                        this.newStudent = { id: '', name: '', imageBase64: '' };
+
+                    } catch (error) {
+                        Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
+                    } finally {
+                        this.isSaving = false;
+                    }
+                },
+                // ฟังก์ชันอ่านไฟล์ Excel
+                handleExcelUpload(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const excelData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                        
+                        Swal.fire('อ่านไฟล์สำเร็จ', `พบข้อมูล ${excelData.length} รายการ (เขียนโค้ดต่อเพื่อ Loop บันทึกลง Firebase ได้เลย)`, 'success');
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+            }
+        }).mount('#app');
+    </script>
 </body>
 </html>
