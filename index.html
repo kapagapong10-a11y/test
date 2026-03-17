@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมคิดเลขเร็ว</title>
+    <style>
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            text-align: center; 
+            background-color: #f0f8ff; 
+            padding: 50px; 
+            margin: 0;
+        }
+        .container { 
+            background: white; 
+            padding: 40px 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1); 
+            max-width: 400px; 
+            margin: auto; 
+        }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        p { color: #7f8c8d; margin-top: 0; margin-bottom: 20px; }
+        .problem { 
+            font-size: 48px; 
+            margin: 20px 0; 
+            font-weight: bold; 
+            color: #e74c3c; 
+        }
+        input { 
+            font-size: 24px; 
+            padding: 10px; 
+            width: 120px; 
+            text-align: center; 
+            border: 2px solid #bdc3c7; 
+            border-radius: 8px; 
+        }
+        button { 
+            color: white; 
+            border: none; 
+            padding: 12px 20px; 
+            font-size: 16px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            margin-top: 15px; 
+            transition: 0.3s;
+        }
+        .btn-check { background-color: #3498db; }
+        .btn-check:hover { background-color: #2980b9; }
+        .btn-next { background-color: #2ecc71; }
+        .btn-next:hover { background-color: #27ae60; }
+        #result { 
+            font-size: 22px; 
+            margin-top: 25px; 
+            font-weight: bold; 
+            min-height: 30px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ฝึกคิดเลขเร็ว</h1>
+    <p>โรงเรียนวังน้ำเย็นวิทยาคม</p>
+    
+    <div class="problem" id="question">? + ?</div>
+    <input type="number" id="answer" placeholder="คำตอบ" onkeypress="handleEnter(event)">
+    <br>
+    <button class="btn-check" onclick="checkAnswer()">ตรวจคำตอบ</button>
+    <button class="btn-next" onclick="generateProblem()">สุ่มโจทย์ใหม่</button>
+    
+    <div id="result"></div>
+</div>
+
+<script>
+    let num1, num2, correctAnswer;
+
+    // ฟังก์ชันสุ่มโจทย์ใหม่
+    function generateProblem() {
+        num1 = Math.floor(Math.random() * 50) + 1; // สุ่มเลข 1-50
+        num2 = Math.floor(Math.random() * 50) + 1;
+        correctAnswer = num1 + num2;
+        
+        document.getElementById("question").innerText = num1 + " + " + num2;
+        document.getElementById("answer").value = "";
+        document.getElementById("result").innerText = "";
+        document.getElementById("answer").focus(); // ให้เคอร์เซอร์ไปกระพริบที่ช่องพิมพ์
+    }
+
+    // ฟังก์ชันตรวจคำตอบ
+    function checkAnswer() {
+        let userAnswer = parseInt(document.getElementById("answer").value);
+        let resultDiv = document.getElementById("result");
+        
+        if (isNaN(userAnswer)) {
+            resultDiv.innerText = "⚠️ กรุณาพิมพ์ตัวเลขครับ";
+            resultDiv.style.color = "#f39c12";
+            return;
+        }
+
+        if (userAnswer === correctAnswer) {
+            resultDiv.innerText = "✅ ถูกต้อง! เก่งมากครับ";
+            resultDiv.style.color = "#27ae60";
+        } else {
+            resultDiv.innerText = "❌ ยังไม่ถูก ลองคิดใหม่อีกนิดนะ";
+            resultDiv.style.color = "#c0392b";
+        }
+    }
+
+    // กด Enter เพื่อตรวจคำตอบได้เลย
+    function handleEnter(event) {
+        if (event.key === "Enter") {
+            checkAnswer();
+        }
+    }
+
+    // เริ่มต้นสร้างโจทย์ข้อแรกเมื่อเปิดหน้าเว็บ
+    window.onload = generateProblem;
+</script>
+
+</body>
+</html>
